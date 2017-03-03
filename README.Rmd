@@ -83,10 +83,14 @@ Now that the raw data are loaded, your first task is to tidy the data with `tidy
 The key steps are to `gather()` the data into key-value pairs and then `separate()` the information from the key column into new columns.
 
 ```{r problem_1}
-# add tidying code here
+# first gather data and drop gene name then break key column out with separate
 
 # report the cleaned_data by just naming it, uncomment the following line:
-# cleaned_data
+raw_data %>% 
+  gather(key, value, -gene.name) %>% 
+  separate(key, into = c('plant', 'fungus', 'time.point', 'rep'), sep = '_') -> cleaned_data
+
+cleaned_data
 ```
 
 ## Problem 3
@@ -96,21 +100,32 @@ You need to translate what you learned on the command line into the R world.
 Which plant has the highest expression of any gene in the 6hpi time point?
 
 ```{bash, eval=FALSE}
-raw_data | awk '$4 == "6hpi"' | sort -k6nr | head -n 1 | cut -f2
+#raw_data | awk '$4 == "6hpi"' | sort -k6nr | head -n 1 | cut -f2
 ```
 
 ```{r}
 # translate to dplyr code
+
+cleaned_data %>% 
+  filter(time.point == "6hpi") %>% 
+  arrange(desc(value)) %>% 
+  slice(1) %>% 
+  select(plant)
 ```
 
 Which plant / fungus pair has the highest expression in the 18hpi time point?
 
 ```{bash, eval=FALSE}
-raw_data | awk '$4 == "18hpi"' | sort -k6nr | head -n 1 | cut -f2,3
+#raw_data | awk '$4 == "18hpi"' | sort -k6nr | head -n 1 | cut -f2,3
 ```
 
 ```{r}
 # translate to dplyr code
+cleaned_data %>% 
+  filter(time.point == "18hpi") %>% 
+  arrange(desc(value)) %>% 
+  slice(1) %>% 
+  select(plant,fungus)
 ```
 
 ## Problem 3
@@ -125,10 +140,15 @@ Identify the top 3 most consistently differentially expressed genes between the 
 
 1. Create a new table from the cleaned data by moving each `hpi` value to a new column name, with counts for each in the column (hint: use a `tidyr` verb). It is helpful to reformat the `hpi` values by converting from e.g. `6hpi` to `hpi.6`. You can use `mutate` to do this, i.e.:
 
-```{r reformat_time, eval=FALSE}
+```{r reformat_time}
+library(stringr)
+
 cleaned_data %>%
-  mutate(time.value = str_replace(time.point, 'hpi', ''),
-         time.hpi = str_c('hpi.', time.value))
+    mutate(time.point = str_replace(time.point, 'hpi', ''), 
+    time.point = str_c('hpi.', time.point)) -> expr_data
+    
+expr_data %>% spread(time.point, value) -> expr_data
+
 ```
 
 2. Create a new column containing the expression difference between the relevant time points.
@@ -138,25 +158,58 @@ cleaned_data %>%
 4. Sort by these statistics and use the `dplyr` verb `slice` to pull the ones you want (i.e., the top 3). Note you will have to remove `gene.name` from the grouping so that sorting works.
 
 ```{r problem_3}
+expr_data %>% 
+  mutate(expr.diff = hpi.24 - hpi.6) -> expr_data
+
+expr_data %>% 
+  group_by(plant, fungus, gene.name) %>%
+  summarise(mean.expr.diff = mean(abs(expr.diff)), expr.diff.var = var(expr.diff)) %>% 
+  arrange(desc(mean.expr.diff), expr.diff.var) %>%
+  group_by(plant, fungus) %>% 
+  slice(1:3) -> top3_expr_data
+
+top3_expr_data
 ```
 
 ## Problem 4
 
 Now examine the above final data frame above and write a few sentences putting inline code in least 3 places. For example, There are `r nrow(mtcars)` rows of data in `mtcars`.
 
+The process of tidying the data was initiated by generating a tibble using  as_data_frame(raw_data) and it has `r nrow(raw_data)` rows. The resultant tibble contained `r nrow(cleaned_data)` rows and `r ncol(cleaned_data)` columns. For determination of expression analysis the data was first gathered and then separated to generate new `r ncol(cleaned_data)` columns for each time point from hpi.6 to hpi.24. This enabled generation of an additional, `r ncol(expr_data)` column, enabling calculation of the differential expression between the highest and lowest time points for each of the `r nrow(cleaned_data)` 2rows
+
 ## Problem 5
 
 Plot the expression (`value`) by time (`hpi`) for the above genes. Format the plot as follows:
+Per Kent Riemondy: Plot the raw value per time for each gene. Filter the original data to extract out the gene names that you find in problem 3, then plot the expression values for these genes.
 
-1. Plot each point.
-1. Connect the points with a smooth line 
-1. Create a facet for each `plant` / `bgh` pair 
-1. Assign a different color to each gene 
-1. Assign a different shape to each replicate 
-1. Add a descriptive title to the plot 
-1. Use the "black & white" theme
+1. Plot each point. Add: + geom_point() 
+1. Connect the points with a smooth line Add: + geom_smooth(method = 'lm', se = FALSE) 
+1. Create a facet for each `plant` / `bgh` pair Add: + facet_wrap(`plant` ~ `bgh`) 
+1. Assign a different color to each gene Add: color = factor(gene.name) 
+1. Assign a different shape to each replicate Add: aes(x=time.point, y=value, shape = rep)
+1. Add a descriptive title to the plot Add: ggtitle('Differentially Expressed Genes in Immunocompromised Plants') 
+1. Use the "black & white" theme Add:  + theme_bw()
 
 Extra credit: add error bars to the plot (use `geom_errorbar`).
 
 ```{r problem_5}
+library(ggplot2)
+
+filter(cleaned_data, gene.name %in% top3_expr_data$gene.name) -> cleaned_data_by_genes
+
+cleaned_data_by_genes %>% 
+  mutate(time = str_replace(time.point, "hpi", ""),
+         time = as.integer(time)) -> cleaned_data_by_genes
+
+ggplot(cleaned_data_by_genes, 
+       aes(x=time, 
+           y=value, 
+           size = rep, 
+           color = factor(gene.name))) +  
+  geom_point() + 
+  geom_smooth(method = 'lm', se = FALSE, size = 1) +
+  facet_grid(plant ~ fungus) + 
+  theme_bw() +
+  ggtitle("Arabidopsis Fungal mRNA Expression")
+
 ```
