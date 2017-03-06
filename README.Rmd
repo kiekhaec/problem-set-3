@@ -205,7 +205,7 @@ ggplot(cleaned_data_by_genes,
        aes(x=time, 
            y=value, 
            size = rep, 
-           color = factor(gene.name))) +  
+           color = factor(gene.name))) +                                                  
   geom_point() + 
   geom_smooth(method = 'lm', se = FALSE, size = 1) +
   facet_grid(plant ~ fungus) + 
